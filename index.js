@@ -4,7 +4,7 @@ import pg from "pg";
 import env from "dotenv";
 import bcrypt from "bcrypt"
 import session from "express-session";
-
+import passport from "passport";
 
 env.config();
 const app = express();
@@ -19,12 +19,13 @@ const db = new pg.Client({
 });
 
 await db.connect();
-
 app.use(session({
     secret: process.env.SECRET,
     resave: false,
     saveUninitialized: true
 }));
+app.use(passport.initialize());
+app.use(passport.session());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.get("/", (req, res) => {
@@ -39,14 +40,18 @@ app.get("/login", (req, res) => {
     res.render("login.ejs");
 });
 app.get("/password", async (req, res) => {
-    const userEmail = req.session.userEmail;
-    const pass = await db.query("SELECT id, password FROM users where email=$1", [userEmail]);
-    const id = pass.rows[0].id;
-    session.id = id;
-    const userDetails = await db.query("SELECT * FROM passwords JOIN users ON users.id=passwords.userid WHERE id=$1", [id]);
-    res.render("password.ejs", {
-        userData: userDetails.rows
-    });
+    if (req.session.userEmail) {
+        const userEmail = req.session.userEmail;
+        const pass = await db.query("SELECT id, password FROM users where email=$1", [userEmail]);
+        const id = pass.rows[0].id;
+        session.id = id;
+        const userDetails = await db.query("SELECT * FROM passwords JOIN users ON users.id=passwords.userid WHERE id=$1", [id]);
+        res.render("password.ejs", {
+            userData: userDetails.rows
+        });
+    } else {
+        res.redirect("/login")
+    }
 })
 app.post("/register", async (req, res) => {
     const userEmail = req.body.username;
@@ -127,6 +132,15 @@ app.get("/delete", async (req, res) => {
     } catch (err) {
         res.send(err);
     }
+});
+
+app.get("/logout", (req, res) => {
+    req.logout(function (err) {
+        if (err) {
+            return next(err);
+        }
+        res.redirect("/");
+    });
 });
 app.listen(port, () => {
     console.log(`listening on port ${port}`);
